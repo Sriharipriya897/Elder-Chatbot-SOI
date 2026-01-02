@@ -112,7 +112,97 @@
                 // Auto trigger after a small delay to ensure page load
                 setTimeout(triggerSOS, 1000);
             }
+
+            // Initialize Shake Detection
+            initShakeDetection();
+
+            // Initialize Volume Button Detection (Best Effort)
+            initVolumeKeySOS();
         });
+
+        // --- Shake Detection Logic ---
+        let shakeThreshold = 15; // Sensitivity
+        let lastX = 0, lastY = 0, lastZ = 0;
+        let lastUpdate = 0;
+        let shakeCount = 0;
+        let lastShakeTime = 0;
+
+        function initShakeDetection() {
+            if (window.DeviceMotionEvent) {
+                window.addEventListener('devicemotion', (event) => {
+                    const acceleration = event.accelerationIncludingGravity;
+                    if (!acceleration) return;
+
+                    const curTime = new Date().getTime();
+                    if ((curTime - lastUpdate) > 100) {
+                        const diffTime = curTime - lastUpdate;
+                        lastUpdate = curTime;
+
+                        const x = acceleration.x;
+                        const y = acceleration.y;
+                        const z = acceleration.z;
+
+                        const speed = Math.abs(x + y + z - lastX - lastY - lastZ) / diffTime * 10000;
+
+                        if (speed > shakeThreshold * 100) { // Scaled threshold
+                            const now = new Date().getTime();
+                            // Debounce shakes (prevent multiple triggers for one shake)
+                            if (now - lastShakeTime > 1000) {
+                                shakeCount++;
+                                lastShakeTime = now;
+                                console.log("Shake detected! Count:", shakeCount);
+
+                                // Trigger on 2 shakes within 5 seconds for robustness
+                                if (shakeCount >= 2) {
+                                    triggerSOS();
+                                    shakeCount = 0;
+                                }
+                            }
+                        }
+
+                        // Reset count if too much time passes
+                        if (new Date().getTime() - lastShakeTime > 5000) {
+                            shakeCount = 0;
+                        }
+
+                        lastX = x;
+                        lastY = y;
+                        lastZ = z;
+                    }
+                }, false);
+            } else {
+                console.log("DeviceMotionEvent not supported on this device.");
+            }
+        }
+
+        // --- Volume Key Logic (Best Effort) ---
+        // Note: Browsers consume volume keys for system volume. 
+        // This only works if the browser allows capturing media keys or specific key codes.
+        let volumePressCount = 0;
+        let lastVolumePressTime = 0;
+
+        function initVolumeKeySOS() {
+            document.addEventListener('keydown', (event) => {
+                // Common codes for volume keys on some mobile browsers/remotes
+                // 174: Volume Down, 175: Volume Up
+                if (event.keyCode === 174 || event.key === 'AudioVolumeDown' ||
+                    event.keyCode === 175 || event.key === 'AudioVolumeUp') {
+
+                    const now = new Date().getTime();
+                    if (now - lastVolumePressTime < 1000) {
+                        volumePressCount++;
+                    } else {
+                        volumePressCount = 1;
+                    }
+                    lastVolumePressTime = now;
+
+                    if (volumePressCount >= 2) {
+                        triggerSOS();
+                        volumePressCount = 0;
+                    }
+                }
+            });
+        }
 
         function triggerSOS() {
             if (isSOSActive) {
